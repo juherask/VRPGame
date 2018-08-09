@@ -245,28 +245,36 @@ class VRPProblemSelector
         // int perRow = Math.Max(1,instances.Count/MAX_ROWS);
         List<string> sets = instances.Select(pi => pi.ProblemSet).Distinct().ToList();
 
-        double btnSize = (Game.Screen.Width - SPACING_BETWEEN_BTNS * (perRow + 3)) / perRow;
-
-        var vl = new VerticalLayout();
-        vl.Spacing = SPACING_BETWEEN_BTNS;
-        Widget vgrid = new Widget(vl);
-        for (int i = 0; i < MAX_ROWS && i * perRow < sets.Count; i++)
+        if (sets.Count == 1)
         {
-            var hl = new HorizontalLayout();
-            hl.Spacing = SPACING_BETWEEN_BTNS;
-            Widget hgrid = new Widget(hl);
-
-            for (int j = i * perRow; j < (i + 1) * perRow && j < sets.Count; j++)
-            {
-                string setName = sets[j];
-                PushButton selectThisSetBtn = new PushButton(btnSize, btnSize, setName);
-                selectThisSetBtn.Clicked += () => handler(setName);
-                selectThisSetBtn.Clicked += () => game.Remove(vgrid);
-                hgrid.Add(selectThisSetBtn);
-
-            }
-            vgrid.Add(hgrid);
+            // Only one set, autoselect it
+            string onlySetName = sets[0];
+            handler(onlySetName);
         }
-        game.Add(vgrid);
+        else
+        {
+            double btnSize = (Game.Screen.Width - SPACING_BETWEEN_BTNS * (perRow + 3)) / perRow;
+
+            var vl = new VerticalLayout();
+            vl.Spacing = SPACING_BETWEEN_BTNS;
+            Widget vgrid = new Widget(vl);
+            for (int i = 0; i < MAX_ROWS && i * perRow < sets.Count; i++)
+            {
+                var hl = new HorizontalLayout();
+                hl.Spacing = SPACING_BETWEEN_BTNS;
+                Widget hgrid = new Widget(hl);
+
+                for (int j = i * perRow; j < (i + 1) * perRow && j < sets.Count; j++)
+                {
+                    string setName = sets[j];
+                    PushButton selectThisSetBtn = new PushButton(btnSize, btnSize, setName);
+                    selectThisSetBtn.Clicked += () => handler(setName);
+                    selectThisSetBtn.Clicked += () => game.Remove(vgrid);
+                    hgrid.Add(selectThisSetBtn);
+                }
+                vgrid.Add(hgrid);
+            }
+            game.Add(vgrid); 
+        }
     }
 }
