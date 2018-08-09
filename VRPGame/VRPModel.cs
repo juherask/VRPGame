@@ -39,6 +39,10 @@ class VRPModel
         BKS_val = -1.0;
         BKS_k = -1;
         D = null;
+
+        routeFillRatios = new List<double>();
+        routeValidStates = new List<bool>();
+        solutionEdges = new List<GameObject>();
     }
     #region Access model
     public int GetRouteIdxForEdge(GameObject edge)
@@ -104,7 +108,8 @@ class VRPModel
                     {
                         // Remove _oldest_
                         var rmEdge = RemoveExistingEdge(firstFrom, newest: false);
-                        if (rmEdge != null) removedEdges.Add(rmEdge);
+                        if (rmEdge != null)
+                            removedEdges.Add(rmEdge);
                     }
                     // if this customer is and we drag several edges with us
                     if (customerIdx != VRPModel.DEPOT_IDX)
@@ -113,7 +118,8 @@ class VRPModel
                         if (neighbourEdges[customerIdx].Count >= 2)
                         {
                             var rmEdge = RemoveExistingEdge(customerIdx, newest:true);
-                            if (rmEdge != null) removedEdges.Add(rmEdge);
+                            if (rmEdge != null)
+                                removedEdges.Add(rmEdge);
                         }
                     }
 
@@ -212,7 +218,6 @@ class VRPModel
 
         neighbourEdges[fromNodeIdx].Add(edge);
         neighbourEdges[toNodeIdx].Add(edge);
-
     }
     #endregion
 
@@ -362,7 +367,33 @@ class VRPModel
         WeightSection
     };
 
-    static public VRPModel LoadFromStream(StreamReader file, string problemName,
+    static public List<int> LoadSolutionFromStream(StreamReader file)
+    {
+        List<int> solution = new List<int>();
+        solution.Add(0);
+        string line;
+        while ((line = file.ReadLine()) != null)
+        {
+            if (line.Contains("Route"))
+            {
+                var parts = line.Split(new char[] {':'});
+                if (parts.Length == 2)
+                {
+                    var routeNodeStrings =
+                        parts[1].Trim().Split(new char[] {' ', '\t'}, StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var routeNodeString in routeNodeStrings)
+                    {
+                        solution.Add(Int32.Parse(routeNodeString));
+                    }
+                    solution.Add(0);
+                }
+            }
+        }
+
+        return solution;
+    }
+
+    static public VRPModel LoadProblemFromStream(StreamReader file, string problemName,
         double displayWidth,
         double displayHeight)
     {

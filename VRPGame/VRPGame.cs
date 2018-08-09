@@ -1,4 +1,5 @@
 ﻿using System;
+using System.CodeDom;
 using System.Collections.Generic;
 using Jypeli;
 using Jypeli.Assets;
@@ -15,11 +16,12 @@ using System.IO.Compression;
 // Ideas:
 // - by playing you can get coins to use: or-opt, 2-opt etc.
 //
-// - OR show the best-known sol (optionally step by step)
-// - Option to show capacities
-// - All routes with different colors incl. result bar (also capacity, also exceeded capacity)
+// x OR show the best-known sol (optionally step by step)
+// x Option to show capacities and demands
+// x All routes with different colors incl. result bar (also capacity, also exceeded capacity)
 // x Exsting routes are fixed until one removes a node from a route with a click
-// - Remove non-eucudian cases
+// x Remove non-eucudian cases
+
 // After that:
 // - VRPTW cases
 // - Map layout background and routes (optionally) follow streets
@@ -29,7 +31,7 @@ using EdgeEndpoints = System.Collections.Generic.KeyValuePair<int, int>;
 
 public class VRPGame : Game
 {
-    const bool UNLOCK_ALL = true;
+    const bool UNLOCK_ALL = false;
     const string PROBLEM_SOURCE = "./Content/VRPLIB.zip";
     const double DOT_MAX_SIZE_RATIO = 20.0;
     const double DOT_MIN_SIZE_PX = 32.0;
@@ -61,14 +63,23 @@ public class VRPGame : Game
     };
 
 
-    static public Color BackgroundColor = Color.FromHexCode("F7F5ED");
-    static public Color NotRoutedColor = Color.FromHexCode("7B8D8E");
-    static public Color BorderColor = Color.FromHexCode("5D4C46");
-    static public Color DepotColor = Color.FromHexCode("E45641");
-    static public Color InfeasibleColor = Color.FromHexCode("F1A94E");
-    static public Color RoutedColor = Color.FromHexCode("2E7882");
-    static public Color CompleteRouteColor = Color.FromHexCode("44B3C2");
+    static public Color BackgroundColor = Color.FromHexCode("ecf0f1");
+    static public Color NotRoutedColor = Color.FromHexCode("95a5a6");
+    static public Color BorderColor = Color.FromHexCode("34495e");
+    static public Color DepotColor = Color.FromHexCode("e74c3c");
+    static public Color InfeasibleColor = Color.FromHexCode("e67e22");
     
+    static public List<Color> routeColors = new List<Color> {
+        Color.FromHexCode("2ecc71"),
+        Color.FromHexCode("f1c40f"),
+        Color.FromHexCode("3498db"),
+        Color.FromHexCode("9b59b6"),
+        Color.FromHexCode("1abc9c"),
+        Color.FromHexCode("E91E63"),
+        Color.FromHexCode("CDDC39"),
+        Color.FromHexCode("795548"),
+    };
+
     // The problems
     List<VRPProblemSelector.ProblemInstance> problemInstanceMetadata = null;
     VRPProblemSelector.ProblemInstance currentInstanceMetadata = null;
@@ -76,6 +87,7 @@ public class VRPGame : Game
 
     // UI and counters
     List<ProgressBar> truckFillBars = new List<ProgressBar>();
+    List<Label> truckFillLabels = new List<Label>();
     VRPProblemSelector problemMenu = null;
     IntMeter trucksUsed;
     DoubleMeter distanceTraveled;
@@ -85,6 +97,7 @@ public class VRPGame : Game
     Label ofBKSDisplay;
     Label ofBKSDisplayNA;
     List<Label> nodeLabels = null;
+    List<Label> demandLabels = null;
 
     // This is for live edit state
     int mouseDownPointIdx = -1;
@@ -93,6 +106,12 @@ public class VRPGame : Game
     GameObject activePointObject = null;
     List<GameObject> dragEdges = new List<GameObject>();
     Dictionary<Vector, GameObject> pointToCircleObject = new Dictionary<Vector, GameObject>();
+    bool optimalLoaded = false;
+
+    // This is for blinking the infeasible routes
+    List<GameObject> blinkingObjects = new List<GameObject>();
+    private Dictionary<GameObject, Color> originalColors = new Dictionary<GameObject, Color>();
+    private bool blinkColorState = false;
     
     // helpers
     double dotMaxSize = 0.0;
@@ -107,18 +126,29 @@ public class VRPGame : Game
         Mouse.IsCursorVisible = true;
         PhoneBackButton.Listen(ConfirmExit, "Lopeta peli");
         Keyboard.Listen(Key.Escape, ButtonState.Pressed, ConfirmExit, "Lopeta peli");
+        Keyboard.Listen(Key.N, ButtonState.Released, ToggleNodeLables, "Näytä numerointi");
         Keyboard.Listen(Key.L, ButtonState.Released, ToggleNodeLables, "Näytä numerointi");
-        //Keyboard.Listen(Key.D, ButtonState.Released, ToggleNodeDemands, "Näytä tilausten koot");
+        Keyboard.Listen(Key.D, ButtonState.Released, ToggleDemandLabels, "Näytä tilausten koot");
+        Keyboard.Listen(Key.S, ButtonState.Released, ShowOptimalSolution, "Näytä ratkaisu");
 
         // Select the problem to play
         problemMenu = new VRPProblemSelector(this);
         problemInstanceMetadata = VRPProblemSelector.LoadInstanceDataFromFile(@"Content\problemdata.txt");
+
+        if (UNLOCK_ALL) problemInstanceMetadata.ForEach(i=>i.Locked=false);
+        
         VRPProblemSelector.LoadPlayerInstanceDataFromFile(@"Content\playerdata.txt", problemInstanceMetadata);
 
         //Mouse.Listen(MouseButton.Left, ButtonState.Pressed, MenuMousePressed, "Valitse kenttä");
         problemMenu.ViewSetSelect(problemInstanceMetadata, OnSetSelected);
 
         //StartGame(@"C:\Users\juherask\Dissertation\Phases\Tuning\Benchmarks\VRPLIB\E\E-n13-k4.vrp");
+
+        Timer blinkInfeasible = new Timer();
+        blinkInfeasible.Interval = 0.33;
+        blinkInfeasible.TimesLimited = false;
+        blinkInfeasible.Timeout += BlinkBlinkingObjects;
+        blinkInfeasible.Start();
     }
 
     void ChooseNextLevel()
@@ -134,6 +164,8 @@ public class VRPGame : Game
         activePointIdx = -1;
         activePointObject = null;
         dragEdges = new List<GameObject>();
+        blinkingObjects = new List<GameObject>();
+        originalColors = new Dictionary<GameObject, Color>();
         pointToCircleObject = new Dictionary<Vector, GameObject>();
 
         //Mouse.Listen(MouseButton.Left, ButtonState.Pressed, MenuMousePressed, "Valitse kenttä");
@@ -177,6 +209,8 @@ public class VRPGame : Game
 
     public void StartGame(string problemFilePath)
     {
+        optimalLoaded = false;
+
         Mouse.Listen(MouseButton.Left, ButtonState.Pressed, MouseBtnGoesDown, "Tökkää piirtääksesi reittejä");
         Mouse.Listen(MouseButton.Left, ButtonState.Released, MouseBtnGoesUp, "");
         Mouse.ListenMovement(0.1, MouseMoves, "Rakenna reittejä venyttämällä");
@@ -252,7 +286,6 @@ public class VRPGame : Game
         }
         
         
-
         // Determine the max size of a dot
         dotMaxSize = Math.Min(Screen.Width / DOT_MAX_SIZE_RATIO,
                                      Screen.Height / DOT_MAX_SIZE_RATIO);
@@ -294,48 +327,52 @@ public class VRPGame : Game
         }
     }
 
-
-    void ToggleNodeLables()
+    void ShowOptimalSolution()
     {
-        if (nodeLabels == null && instance!=null)
+        if (currentInstanceMetadata==null) return;
+
+        List<int> solution = new List<int>();
+
+        string solutionFilePath = currentInstanceMetadata.ProblemFile.Replace(".vrp", ".opt");
+        if (File.Exists(solutionFilePath))
         {
-            nodeLabels = new List<Label>();
-            for (int i = 0; i < instance.points.Count; i++)
+            StreamReader solutionFileStream = new StreamReader(solutionFilePath);
+            solution = VRPModel.LoadSolutionFromStream(solutionFileStream);
+        }
+        else if (File.Exists(PROBLEM_SOURCE))
+        {
+            using (ZipArchive zip = ZipFile.Open(PROBLEM_SOURCE, ZipArchiveMode.Read))
             {
-                var nodeLabel = new Label(i.ToString());
-                nodeLabel.Color = Color.Transparent;
-                nodeLabel.Position = instance.points[i];
-                Add(nodeLabel, 0);
-                nodeLabels.Add(nodeLabel);
+                string fileName = Path.GetFileName(solutionFilePath);
+                foreach (ZipArchiveEntry entry in zip.Entries)
+                {
+                    if (entry.Name == fileName)
+                    {
+                        StreamReader solutionZipStream = new StreamReader( entry.Open() );
+                        solution = VRPModel.LoadSolutionFromStream(solutionZipStream);
+                    }
+                }
             }
         }
-        else if (nodeLabels!=null)
+
+        var oldSolutionEdges = new List<GameObject>(instance.solutionEdges);
+        foreach (var oldEdge in oldSolutionEdges)
         {
-            foreach (var nl in nodeLabels)
-	        {
-                Remove(nl);
-	        }
-            nodeLabels = null;
+            instance.RemoveEdgeFromSolution(oldEdge);    
+            Remove(oldEdge);
         }
-    }
 
+        for (int i = 1; i < solution.Count; i++)
+        {
+            var fromNode = solution[i - 1];
+            var toNode = solution[i];
+            var edge = CreateNewEdge(instance.points[fromNode], fromNode, toNode);
+            instance.AddEdgeToSolution(edge);
+        }
 
-    private Label CreateMeterDisplay(Meter meter, Vector position, Image icon)
-    {
-        Label meterDisplay = new Label(meter);
-        meterDisplay.Font = Font.DefaultLarge;
-        meterDisplay.Position = position;
-        Add(meterDisplay, 3);
-
-        // square icon (height, height) is by intention
-        GameObject iconDisplay = new GameObject(meterDisplay.Height, meterDisplay.Height);
-        iconDisplay.Image = icon;
-        iconDisplay.Position = position - new Vector(meterDisplay.Width / 2 + 10 + iconDisplay.Width / 2, 0);
-        Add(iconDisplay, 3);
-
-        meterDisplay.Tag = iconDisplay;
-
-        return meterDisplay;
+        optimalLoaded = true;
+        RefreshStateAndUpdateDisplays();
+        HighlightViolations();
     }
 
     #region Solution manipulations
@@ -370,13 +407,23 @@ public class VRPGame : Game
         activePointObject = hotCustomer;
         activePointIdx = pidx;
 
-        GameObject newEdge = new GameObject(EDGE_WIDTH, EDGE_WIDTH, Shape.Rectangle);
-        newEdge.Color = BorderColor;
-        newEdge.Position = hotCustomer.Position;
-        Add(newEdge, -3);
-        newEdge.Tag = new EdgeEndpoints(pidx, -1);
+        var newEdge = CreateNewEdge(hotCustomer.Position, pidx);
 
         dragEdges.Add(newEdge);
+    }
+
+    private GameObject CreateNewEdge(Vector position, int fromPidx, int toPidx=-1)
+    {
+        GameObject newEdge = new GameObject(EDGE_WIDTH, EDGE_WIDTH, Shape.Rectangle);
+        newEdge.Color = BorderColor;
+        newEdge.Position = position;
+        Add(newEdge, -3);
+        newEdge.Tag = new EdgeEndpoints(fromPidx, toPidx);
+        if (toPidx != -1)
+        {
+            RouteEdgeObject(newEdge, instance.points[fromPidx], instance.points[toPidx]);
+        }
+        return newEdge;
     }
 
     private void DeactivateOldPoint()
@@ -433,12 +480,9 @@ public class VRPGame : Game
         if (pidx >= 0 && pidx != activePointIdx)
         {
 
-            bool passTroughPoint = false;
-            if (pidx != VRPModel.DEPOT_IDX && instance.GetNodeNeighbourCount(pidx) >= 2)
-            {
-                passTroughPoint = true;
-            }
-            if (passTroughPoint)
+            bool isPassTroughPoint = pidx != VRPModel.DEPOT_IDX &&
+                                     instance.GetNodeNeighbourCount(pidx) >= 2;
+            if (isPassTroughPoint)
             {
                 var edge = instance.RemoveExistingEdge(pidx, true);
                 if (edge != null) Remove(edge); // remove from game
@@ -517,7 +561,7 @@ public class VRPGame : Game
             int pidx = GetIndexOfPointUnderMouse();
             List<GameObject> removedEdges = null;
             if (pidx!=-1 && pidx != activePointIdx &&
-                instance.GetNodeNeighbourCount(pidx)<2 &&
+                (pidx==0 || instance.GetNodeNeighbourCount(pidx)<2) &&
                 instance.ConnectNode(pidx, dragEdges, out removedEdges))
             {
                 foreach (var rmEdge in removedEdges)
@@ -586,6 +630,79 @@ public class VRPGame : Game
 
     #region UI and UX
 
+    void ToggleNodeLables()
+    {
+        if (nodeLabels == null && instance!=null)
+        {
+            nodeLabels = new List<Label>();
+            for (int i = 0; i < instance.points.Count; i++)
+            {
+                var nodeLabel = new Label(i.ToString());
+                nodeLabel.Color = Color.Transparent;
+                nodeLabel.Position = instance.points[i];
+                nodeLabel.Font = Font.DefaultSmallBold;
+                Add(nodeLabel, 0);
+                nodeLabels.Add(nodeLabel);
+            }
+        }
+        else if (nodeLabels!=null)
+        {
+            foreach (var nl in nodeLabels)
+	        {
+                Remove(nl);
+	        }
+            nodeLabels = null;
+        }
+    }
+
+    void ToggleDemandLabels()
+    {
+        if (demandLabels == null && instance!=null)
+        {
+            demandLabels = new List<Label>();
+            for (int i = 0; i < instance.points.Count; i++)
+            {
+                var demandLabel = new Label($"{instance.demands[i]:0.##}");
+                demandLabel.Color = Color.Transparent;
+                demandLabel.Position = instance.points[i];;
+                demandLabel.Y += pointToCircleObject[instance.points[i]].Height/2+demandLabel.Height/2;
+                demandLabel.Font = Font.DefaultSmall;
+                Add(demandLabel, 0);
+                demandLabels.Add(demandLabel);
+            }
+        }
+        else if (demandLabels!=null)
+        {
+            foreach (var dl in demandLabels)
+            {
+                Remove(dl);
+            }
+            demandLabels = null;
+        }
+        if (instance != null)
+        {
+            UpdateTruckFillRatios(instance.routeFillRatios);
+        }
+    }
+
+    private Label CreateMeterDisplay(Meter meter, Vector position, Image icon)
+    {
+        Label meterDisplay = new Label(meter);
+        meterDisplay.Font = Font.DefaultLarge;
+        meterDisplay.Position = position;
+        Add(meterDisplay, 3);
+
+        // square icon (height, height) is by intention
+        GameObject iconDisplay = new GameObject(meterDisplay.Height, meterDisplay.Height);
+        iconDisplay.Image = icon;
+        iconDisplay.Position = position - new Vector(meterDisplay.Width / 2 + 10 + iconDisplay.Width / 2, 0);
+        Add(iconDisplay, 3);
+
+        meterDisplay.Tag = iconDisplay;
+
+        return meterDisplay;
+    }
+
     void UpdateTruckFillRatios(List<double> fr)
     {
         int tfbIdx = 0;
@@ -602,24 +719,55 @@ public class VRPGame : Game
                 truckFillBar.BorderColor = BorderColor;
                 Add(truckFillBar, 3);
                 truckFillBars.Add(truckFillBar);
+                
+                Label truckFillLabel = new Label();
+                truckFillLabel.Position = truckFillBar.Position;
+                truckFillLabel.Font = Font.DefaultSmallBold;
+                Add(truckFillLabel, 3);
+                truckFillLabels.Add(truckFillLabel);
             }
             else
             {
                 (truckFillBars[tfbIdx].Meter as DoubleMeter).Value = carriedWt;
             }
 
-            if (carriedWt > instance.capacity)
+            // Demands are being shown
+            if (demandLabels != null)
             {
-                truckFillBars[tfbIdx].BarColor = InfeasibleColor;
-            }
-            else if (instance.routeValidStates[tfbIdx])
-            {
-                truckFillBars[tfbIdx].BarColor = CompleteRouteColor;
+                truckFillLabels[tfbIdx].Text = $"{carriedWt:0.#}/{instance.capacity:0.#}";
             }
             else
             {
-                truckFillBars[tfbIdx].BarColor = RoutedColor;
+                truckFillLabels[tfbIdx].Text = "";
             }
+
+            var currentTruckFillBar = truckFillBars[tfbIdx];
+            if (carriedWt > instance.capacity)
+            {
+                currentTruckFillBar.BarColor = routeColors[tfbIdx % routeColors.Count];
+                if (!blinkingObjects.Contains(currentTruckFillBar))
+                {
+                    blinkingObjects.Add(currentTruckFillBar);
+                }
+                originalColors[currentTruckFillBar] = routeColors[tfbIdx % routeColors.Count];
+            }
+            else
+            {
+                if (instance.routeValidStates[tfbIdx])
+                {
+                    currentTruckFillBar.BarColor = routeColors[tfbIdx % routeColors.Count];
+                }
+                else
+                {
+                    currentTruckFillBar.BarColor = Color.Darker(routeColors[tfbIdx % routeColors.Count], 50);
+                }
+
+                if (blinkingObjects.Contains(currentTruckFillBar))
+                {
+                    blinkingObjects.Remove(currentTruckFillBar);
+                }
+            }
+  
 
             tfbIdx++;
         }
@@ -628,6 +776,12 @@ public class VRPGame : Game
         {
             Remove(truckFillBars[tfbIdx]);
             truckFillBars.RemoveAt(tfbIdx);
+
+            if (truckFillLabels != null)
+            {
+                Remove(truckFillLabels[tfbIdx]);
+                truckFillLabels.RemoveAt(tfbIdx);
+            }
         }
     }
 
@@ -741,11 +895,10 @@ public class VRPGame : Game
             ofBKSDisplayNA.IsVisible = false;
             ofBKSDisplay.IsVisible = true;
 
-
-            if (currentInstanceMetadata.personalBest_k == null ||
+            if (!optimalLoaded && (currentInstanceMetadata.personalBest_k == null ||
                 k < currentInstanceMetadata.personalBest_k ||
-                (k == currentInstanceMetadata.personalBest_k &&
-                totd < currentInstanceMetadata.personalBestSol))
+                (k == (int)currentInstanceMetadata.personalBest_k &&
+                totd < currentInstanceMetadata.personalBestSol)))
             {
                 currentInstanceMetadata.Stars = ShowNewPersonalBest(k, totd);
                 currentInstanceMetadata.personalBest_k = k;
@@ -784,19 +937,72 @@ public class VRPGame : Game
             if (ridx ==-1)
             {
                 customer.Color = NotRoutedColor;
+                if (blinkingObjects.Contains(customer))
+                {
+                    blinkingObjects.Remove(customer);
+                }
             }
             else if (instance.routeFillRatios[ridx] > instance.capacity)
             {
                 customer.Color = InfeasibleColor;
+
+                if (!blinkingObjects.Contains(customer))
+                {
+                    blinkingObjects.Add(customer);
+                }
+                originalColors[customer] = routeColors[ridx%routeColors.Count];
             }
             else
             {
                 if (instance.routeValidStates[ridx])
-                    customer.Color = CompleteRouteColor;
+                    customer.Color = routeColors[ridx%routeColors.Count];
                 else
-                    customer.Color = RoutedColor;
+                    customer.Color = Color.Darker(routeColors[ridx%routeColors.Count], 50);
+
+                if (blinkingObjects.Contains(customer))
+                {
+                    blinkingObjects.Remove(customer);
+                }
             }
 		}
     }
+
+    void BlinkBlinkingObjects()
+    {
+        if (blinkingObjects.Count > 0)
+        {
+            if (blinkColorState)
+            {
+                foreach (GameObject bo in blinkingObjects)
+                {
+                    if (bo is ProgressBar)
+                    {
+                        ((ProgressBar)bo).BarColor =  originalColors[bo];
+                    }
+                    else
+                    {
+                        bo.Color = originalColors[bo];    
+                    }
+                }
+            }
+            else
+            {
+                foreach (GameObject bo in blinkingObjects)
+                {
+                    if (bo is ProgressBar)
+                    {
+                        ((ProgressBar) bo).BarColor = InfeasibleColor;
+                    }
+                    else
+                    {
+                        bo.Color = InfeasibleColor;    
+                    }
+                }
+            }
+
+            blinkColorState = !blinkColorState;
+        }
+    }
+
     #endregion
 }
