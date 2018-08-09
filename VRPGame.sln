@@ -1,0 +1,26 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Express 2013 for Windows Desktop
+VisualStudioVersion = 12.0.30723.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VRPGame", "VRPGame\VRPGame.csproj", "{85B03475-EDEC-4661-8C8C-8D2CD61C9436}"
+EndProject
+Project("{96E2B04D-8817-42C6-938A-82C39BA4D311}") = "VRPGameContent", "VRPGameContent\VRPGameContent.contentproj", "{D47B1C9A-E724-49D3-BA11-11A3F4B0D19C}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{85B03475-EDEC-4661-8C8C-8D2CD61C9436}.Debug|x86.ActiveCfg = Debug|x86
+		{85B03475-EDEC-4661-8C8C-8D2CD61C9436}.Debug|x86.Build.0 = Debug|x86
+		{85B03475-EDEC-4661-8C8C-8D2CD61C9436}.Release|x86.ActiveCfg = Release|x86
+		{85B03475-EDEC-4661-8C8C-8D2CD61C9436}.Release|x86.Build.0 = Release|x86
+		{D47B1C9A-E724-49D3-BA11-11A3F4B0D19C}.Debug|x86.ActiveCfg = Debug|x86
+		{D47B1C9A-E724-49D3-BA11-11A3F4B0D19C}.Release|x86.ActiveCfg = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
