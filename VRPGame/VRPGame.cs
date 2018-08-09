@@ -29,16 +29,18 @@ using EdgeEndpoints = System.Collections.Generic.KeyValuePair<int, int>;
 
 public class VRPGame : Game
 {
-    static double DOT_MAX_SIZE_RATIO = 20.0;
-    static double DOT_MIN_SIZE_PX = 32.0;
-    static double DOT_MIN_SIZE_MAX_ALLOWED_OVERLAP = 1.5;
-    static double BORDER_WIDTH = 1.5;
-    static double EDGE_WIDTH = 4.0;
-    static double EDGE_HIT_WIDHT = 8.0;
-    static public double SCREEN_MARGIN_WIDHT_RATIO = 5.0; // e.g. 1/5th (1/10th each side)
-    static public double TOP_MARGIN = 50;
-    static public double TRUCK_BAR_HEIGHT = 10;
-    static string[] HELPTEXT = new string[]{
+    const bool UNLOCK_ALL = true;
+    const string PROBLEM_SOURCE = "./Content/VRPLIB.zip";
+    const double DOT_MAX_SIZE_RATIO = 20.0;
+    const double DOT_MIN_SIZE_PX = 32.0;
+    const double DOT_MIN_SIZE_MAX_ALLOWED_OVERLAP = 1.5;
+    const double BORDER_WIDTH = 1.5;
+    const double EDGE_WIDTH = 4.0;
+    const double EDGE_HIT_WIDHT = 8.0;
+    public const double SCREEN_MARGIN_WIDHT_RATIO = 5.0; // e.g. 1/5th (1/10th each side)
+    public const double TOP_MARGIN = 50;
+    public const double TRUCK_BAR_HEIGHT = 16;
+    static readonly string[] HELPTEXT = new string[]{
         "KULJETUSTEN OPTIMOINTIPELI",
         "",
         "Reititä kaikki harmaat pisteet mahdollisimman vähäi-",
@@ -224,14 +226,14 @@ public class VRPGame : Game
         {
             StreamReader problemFileStream = new StreamReader(problemFilePath);
             // The problem
-            instance = VRPModel.LoadFromStream(problemFileStream, problemName,
+            instance = VRPModel.LoadProblemFromStream(problemFileStream, problemName,
                 Screen.Width - Screen.Width / SCREEN_MARGIN_WIDHT_RATIO,
                 Screen.Height - Screen.Height / SCREEN_MARGIN_WIDHT_RATIO
             );
         }
-        else if (File.Exists("./Content/VRPLIB.zip"))
+        else if (File.Exists(PROBLEM_SOURCE))
         {
-            using (ZipArchive zip = ZipFile.Open("./Content/VRPLIB.zip", ZipArchiveMode.Read))
+            using (ZipArchive zip = ZipFile.Open(PROBLEM_SOURCE, ZipArchiveMode.Read))
             {
                 string fileName = Path.GetFileName(problemFilePath);
                 foreach (ZipArchiveEntry entry in zip.Entries)
@@ -239,8 +241,8 @@ public class VRPGame : Game
                     if (entry.Name == fileName)
                     {
                         StreamReader problemZipStream = new StreamReader( entry.Open() );
-                        // The problem
-                        instance = VRPModel.LoadFromStream(problemZipStream, problemName,
+                        // The problem        
+                        instance = VRPModel.LoadProblemFromStream(problemZipStream, problemName,
                             Screen.Width - Screen.Width / SCREEN_MARGIN_WIDHT_RATIO,
                             Screen.Height - Screen.Height / SCREEN_MARGIN_WIDHT_RATIO
                         );
@@ -730,7 +732,7 @@ public class VRPGame : Game
 
     private void RefreshStateAndUpdateDisplays()
     {
-        int k;double totd;
+        int k; double totd;
         instance.CalculateObjectives(out k, out totd);
         trucksUsed.Value = k; distanceTraveled.Value = totd;
         if (instance.CheckFeasibility())
