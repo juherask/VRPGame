@@ -10,6 +10,7 @@ using System.IO;
 class VRPProblemSelector
 {
     static Image levelLockedImage = Game.LoadImage("level_locked");
+    static Image nolevelBtnImage = Game.LoadImage("level");
     static Image levelBtn0Image = Game.LoadImage("level_nostar");
     static Image levelBtn1Image = Game.LoadImage("level_1star");
     static Image levelBtn2Image = Game.LoadImage("level_2star");
@@ -268,6 +269,7 @@ class VRPProblemSelector
                 {
                     string setName = sets[j];
                     PushButton selectThisSetBtn = new PushButton(btnSize, btnSize, setName);
+                    selectThisSetBtn.Image = nolevelBtnImage;
                     selectThisSetBtn.Clicked += () => handler(setName);
                     selectThisSetBtn.Clicked += () => game.Remove(vgrid);
                     hgrid.Add(selectThisSetBtn);
